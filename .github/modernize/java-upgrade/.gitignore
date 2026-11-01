@@ -1,6 +1,8 @@
 target/
-node_modules/
-.env
+*.class
 *.log
+hs_err_pid*
+startup-error.txt
+*.bak
 .idea/
 .vscode/
