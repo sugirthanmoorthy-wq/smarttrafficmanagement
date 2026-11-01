@@ -1,0 +1,264 @@
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const state = { junctions: [], roads: [], lastRoute: null, vehicles: [], signals: [], events: [] };
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, ch => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[ch]));
+  }
+  function showToast(message, isError = false) {
+    const container = $("toastContainer");
+    if (!container) { alert(message); return; }
+    const item = document.createElement("div");
+    item.className = `toast show text-bg-${isError ? "danger" : "success"} border-0 mb-2`;
+    item.setAttribute("role", "status");
+    item.innerHTML = `<div class="d-flex"><div class="toast-body">${escapeHtml(message)}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" aria-label="Close"></button></div>`;
+    item.querySelector("button").addEventListener("click", () => item.remove());
+    container.appendChild(item);
+    setTimeout(() => item.remove(), 5000);
+  }
+  function setBackendStatus(online, text) {
+    const badge = $("backendStatusBadge");
+    const banner = $("backendStatusBanner");
+    if (badge) {
+      badge.className = `badge ${online ? "bg-success" : "bg-danger"} cursor-pointer`;
+      badge.innerHTML = `<i class="bi bi-${online ? "check-circle" : "exclamation-triangle"} me-1"></i> Backend: ${escapeHtml(text)}`;
+    }
+    if (banner) {
+      banner.classList.toggle("online", online);
+      const strong = banner.querySelector("strong");
+      if (strong) strong.textContent = online ? "Spring Boot + MySQL connected:" : "Backend connection issue:";
+      const firstDiv = banner.querySelector("div");
+      if (firstDiv) {
+        firstDiv.innerHTML = `<i class="bi bi-cpu text-info me-2"></i><strong>${online ? "Spring Boot + MySQL connected:" : "Backend connection issue:"}</strong> ${escapeHtml(text)}`;
+      }
+    }
+  }
+  function fillSelect(id, selected) {
+    const select = $(id);
+    if (!select) return;
+    const old = selected || select.value;
+    select.innerHTML = state.junctions.map(j =>
+      `<option value="${escapeHtml(j.id)}">${escapeHtml(j.id)} — ${escapeHtml(j.name)}</option>`
+    ).join("");
+    if (old && state.junctions.some(j => j.id === old)) select.value = old;
+  }
+  function fillAllJunctionSelects() {
+    ["routeSourceSelect","routeDestSelect","emSingleSrc","emSingleDst",
+     "emV1Src","emV1Dst","emV2Src","emV2Dst"].forEach(id => fillSelect(id));
+    if ($("routeDestSelect") && state.junctions.length > 1) $("routeDestSelect").selectedIndex = 1;
+    if ($("emSingleDst") && state.junctions.length > 1) $("emSingleDst").selectedIndex = 1;
+  }
+  function renderRoads() {
+    const host = $("networkSvgContainer");
+    const mini = $("dashMiniMapContainer");
+    const rows = state.roads.map(r => `
+      <tr>
+        <td>${escapeHtml(r.source)} → ${escapeHtml(r.destination)}</td>
+        <td>${Number(r.distanceKm).toFixed(1)} km</td>
+        <td>${Number(r.baseSpeedKmh).toFixed(0)} km/h</td>
+        <td>${escapeHtml(r.trafficLevel)}</td>
+        <td><span class="badge ${r.closed ? "bg-danger" : "bg-success"}">${r.closed ? "CLOSED" : "OPEN"}</span></td>
+        <td><button class="btn btn-sm btn-outline-custom" data-road-a="${escapeHtml(r.source)}" data-road-b="${escapeHtml(r.destination)}" data-road-closed="${r.closed}" data-road-traffic="${escapeHtml(r.trafficLevel)}">Edit</button></td>
+      </tr>`).join("");
+    const table = `<div class="table-responsive"><table class="table-custom"><thead><tr><th>Road</th><th>Distance</th><th>Base speed</th><th>Traffic</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="6">No road data returned.</td></tr>'}</tbody></table></div>`;
+    if (host) host.innerHTML = `<div class="mb-3 text-info">Loaded ${state.junctions.length} junctions and ${state.roads.length} road records from MySQL.</div>${table}`;
+    if (mini) mini.innerHTML = `<div class="p-3"><div class="text-info fw-bold mb-2">Live network from MySQL</div><div class="d-flex flex-wrap gap-2 mb-3">${state.junctions.map(j => `<span class="badge bg-primary">${escapeHtml(j.id)} · ${escapeHtml(j.name)}</span>`).join("")}</div><div class="small text-muted">${state.roads.length} directed road segments loaded. Open Traffic Network for road status and updates.</div></div>`;
+    document.querySelectorAll("[data-road-a]").forEach(button => {
+      button.addEventListener("click", () => openRoadEditor(button.dataset.roadA, button.dataset.roadB, button.dataset.roadClosed === "true", button.dataset.roadTraffic));
+    });
+  }
+  function renderVehicles() {
+    const rows = state.vehicles.map(v => `<tr><td>${escapeHtml(v.id)}</td><td>${escapeHtml(v.vehicleType)}</td><td>${escapeHtml(v.source)} → ${escapeHtml(v.destination)}</td><td>${escapeHtml(v.route || "")}</td><td>${escapeHtml(v.status)}</td><td>${v.estimatedTicks ?? "—"}</td></tr>`).join("");
+    const table = `<div class="table-responsive"><table class="table-custom"><thead><tr><th>ID</th><th>Type</th><th>From → To</th><th>Route</th><th>Status</th><th>Time</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-center text-muted">No vehicles saved yet.</td></tr>'}</tbody></table></div>`;
+    if ($("liveTrafficTrackingBody")) $("liveTrafficTrackingBody").innerHTML = rows || '<tr><td colspan="6" class="text-center text-muted">No vehicles saved yet.</td></tr>';
+    if ($("scheduledTrafficTableBody")) $("scheduledTrafficTableBody").innerHTML = rows || '<tr><td colspan="6" class="text-center text-muted">No vehicles scheduled yet.</td></tr>';
+    if ($("dashActiveVehiclesBody")) $("dashActiveVehiclesBody").innerHTML = table;
+    if ($("dashTotalVehicles")) $("dashTotalVehicles").textContent = state.vehicles.length;
+    if ($("dashActiveEmergencies")) $("dashActiveEmergencies").textContent = state.vehicles.filter(v => ["AMBULANCE","FIRE_TRUCK","POLICE"].includes(v.vehicleType) && v.status !== "COMPLETED").length;
+    if ($("dashEmergencyQueueCount")) $("dashEmergencyQueueCount").textContent = state.vehicles.filter(v => ["AMBULANCE","FIRE_TRUCK","POLICE"].includes(v.vehicleType)).length;
+    if ($("repEmergencyCompleted")) $("repEmergencyCompleted").textContent = state.vehicles.filter(v => ["AMBULANCE","FIRE_TRUCK","POLICE"].includes(v.vehicleType) && v.status === "COMPLETED").length;
+  }
+  function renderSignals() {
+    const host = $("signalsGridContainer");
+    if (!host) return;
+    host.innerHTML = state.signals.map(s => {
+      const phase = String(s.phase || "NORMAL").toLowerCase().replace(/[^a-z_]/g, "");
+      return `<div class="col-12 col-md-6 col-xl-4 mb-3"><div class="signal-card ${phase.includes("emergency") ? "preempted" : ""}"><div class="d-flex justify-content-between align-items-center"><strong>${escapeHtml(s.junctionId)}</strong><span class="phase-badge phase-${phase.includes("emergency") ? "emergency" : "normal"}">${escapeHtml(s.phase || "NORMAL")}</span></div><div class="text-muted small mt-2">Priority vehicle: ${escapeHtml(s.priorityVehicleId || "None")}</div><div class="text-muted small">Updated: ${escapeHtml(s.updatedAt || "—")}</div></div></div>`;
+    }).join("") || '<div class="text-muted">No signal data returned.</div>';
+  }
+  function renderEvents() {
+    const items = state.events.map(e => `<div class="event-item"><span class="event-badge ${String(e.eventType || "").includes("EMERGENCY") ? "emergency" : String(e.eventType || "").includes("TRAFFIC") ? "traffic" : "system"}">${escapeHtml(e.eventType)}</span><div><div class="text-white">${escapeHtml(e.description)}</div><small class="text-muted">${escapeHtml(e.junctionId || "City-wide")} · ${escapeHtml(e.createdAt || "")}</small></div></div>`).join("");
+    if ($("eventsFullStreamContainer")) $("eventsFullStreamContainer").innerHTML = items || '<div class="p-3 text-muted">No traffic events yet.</div>';
+    if ($("dashRecentEventsList")) $("dashRecentEventsList").innerHTML = items || '<div class="p-3 text-muted">No traffic events yet.</div>';
+  }
+  async function refreshAll() {
+    const [junctions, roads, vehicles, signals, events] = await Promise.all([
+      TrafficAPI.junctions(), TrafficAPI.roads(), TrafficAPI.vehicles(), TrafficAPI.signals(), TrafficAPI.events()
+    ]);
+    state.junctions = junctions || [];
+    state.roads = roads || [];
+    state.vehicles = vehicles || [];
+    state.signals = signals || [];
+    state.events = events || [];
+    fillAllJunctionSelects();
+    if ($("dashJunctionCount")) $("dashJunctionCount").textContent = state.junctions.length;
+    renderRoads(); renderVehicles(); renderSignals(); renderEvents();
+    setBackendStatus(true, "CONNECTED");
+  }
+  async function guarded(action) {
+    try { await action(); }
+    catch (error) {
+      console.error("Smart Traffic API error:", error);
+      setBackendStatus(false, "ERROR");
+      showToast(error.message || "Request failed. Check Spring Boot and MySQL.", true);
+    }
+  }
+  function showTab(tab) {
+    document.querySelectorAll(".tab-view").forEach(el => el.classList.add("d-none"));
+    const view = $("view-" + tab);
+    if (view) view.classList.remove("d-none");
+    document.querySelectorAll(".nav-link-custom").forEach(el => el.classList.toggle("active", el.dataset.tab === tab));
+    document.querySelector(".app-sidebar")?.classList.remove("show");
+  }
+  window.App = window.App || {};
+  window.App.switchTab = showTab;
+
+  function openRoadEditor(a, b, closed, traffic) {
+    if ($("roadModalA")) $("roadModalA").value = a;
+    if ($("roadModalB")) $("roadModalB").value = b;
+    if ($("roadModalStatus")) $("roadModalStatus").textContent = closed ? "CLOSED" : "OPEN";
+    if ($("btnRoadModalToggleClosure")) $("btnRoadModalToggleClosure").dataset.closed = String(closed);
+    if ($("roadModalTrafficSelect")) $("roadModalTrafficSelect").value = traffic || "LIGHT";
+    if (window.bootstrap && $("roadActionModal")) bootstrap.Modal.getOrCreateInstance($("roadActionModal")).show();
+    else showToast(`${a} → ${b}: ${closed ? "CLOSED" : "OPEN"}, ${traffic}`);
+  }
+  async function saveRoadUpdate() {
+    const closed = $("btnRoadModalToggleClosure")?.dataset.closed === "true";
+    await TrafficAPI.updateRoad({
+      source: $("roadModalA")?.value,
+      destination: $("roadModalB")?.value,
+      closed,
+      trafficLevel: $("roadModalTrafficSelect")?.value || "LIGHT"
+    });
+    showToast("Road status updated in MySQL.");
+    await refreshAll();
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll(".nav-link-custom[data-tab]").forEach(link => link.addEventListener("click", () => showTab(link.dataset.tab)));
+    $("btnSaveBackendUrl")?.addEventListener("click", () => {
+      TrafficAPI.setBaseUrl($("backendUrlInput")?.value);
+      guarded(async () => { await refreshAll(); showToast("Backend connected."); if (window.bootstrap && $("backendConfigModal")) bootstrap.Modal.getOrCreateInstance($("backendConfigModal")).hide(); });
+    });
+    $("backendStatusBadge")?.addEventListener("click", () => {
+      if (window.bootstrap && $("backendConfigModal")) bootstrap.Modal.getOrCreateInstance($("backendConfigModal")).show();
+    });
+    $("backendStatusBanner")?.addEventListener("click", event => {
+      if (event.target.closest("button") || event.currentTarget === event.target) {
+        if (window.bootstrap && $("backendConfigModal")) bootstrap.Modal.getOrCreateInstance($("backendConfigModal")).show();
+      }
+    });
+    $("btnFindRoute")?.addEventListener("click", () => guarded(async () => {
+      const result = await TrafficAPI.findRoute({
+        vehicleType: $("routeVehicleTypeSelect")?.value || "NORMAL",
+        source: $("routeSourceSelect")?.value,
+        destination: $("routeDestSelect")?.value
+      });
+      state.lastRoute = result;
+      $("routeResultCard")?.classList.remove("d-none");
+      if ($("routeErrorMessage")) $("routeErrorMessage").classList.add("d-none");
+      if ($("resVehicleType")) $("resVehicleType").textContent = result.vehicleType;
+      if ($("resDistance")) $("resDistance").textContent = `${result.distanceKm} km`;
+      if ($("resEstTime")) $("resEstTime").textContent = `${result.estimatedTicks} min`;
+      if ($("resCorridorSteps")) $("resCorridorSteps").innerHTML = (result.route || []).map((node,i) => `${i ? '<span class="corridor-arrow">→</span>' : ""}<span class="corridor-node">${escapeHtml(node)}</span>`).join("");
+      if ($("resRouteSegmentsTable")) $("resRouteSegmentsTable").innerHTML = (result.segments || []).map((s,i) => `<tr><td>${i+1}</td><td>${escapeHtml(s.from)} → ${escapeHtml(s.to)}</td><td>${s.distanceKm} km</td><td>${s.baseSpeedKmh} km/h</td><td>${escapeHtml(s.trafficLevel)}</td><td>${s.cost}</td></tr>`).join("");
+      showToast("Optimal route calculated by the Java backend.");
+    }));
+    $("btnDispatchRouteVehicle")?.addEventListener("click", () => guarded(async () => {
+      const r = state.lastRoute;
+      if (!r) throw new Error("Calculate a route first.");
+      if (r.vehicleType === "NORMAL") {
+        const result = await TrafficAPI.generateTraffic(3);
+        showToast(`Generated ${result.count} traffic vehicles. Normal route dispatch is saved through traffic generation.`);
+      } else {
+        const result = await TrafficAPI.dispatchEmergency({ vehicleType:r.vehicleType, source:r.source, destination:r.destination });
+        showToast(`Emergency ${result.id} dispatched with green corridor.`);
+      }
+      await refreshAll();
+    }));
+    $("btnGenerateTraffic")?.addEventListener("click", () => guarded(async () => {
+      const count = Math.max(3, Math.min(10, Number($("randomVehicleCountInput")?.value || 6)));
+      const result = await TrafficAPI.generateTraffic(count);
+      showToast(`Generated and saved ${result.count} vehicles.`);
+      await refreshAll();
+    }));
+    $("btnDispatchSingleEmergency")?.addEventListener("click", () => guarded(async () => {
+      const result = await TrafficAPI.dispatchEmergency({
+        id: $("emSingleId")?.value?.trim(),
+        vehicleType: $("emSingleType")?.value,
+        source: $("emSingleSrc")?.value,
+        destination: $("emSingleDst")?.value
+      });
+      showToast(`Dispatched ${result.id}; green corridor enabled.`);
+      await refreshAll();
+    }));
+    $("btnDispatchTwoEmergencies")?.addEventListener("click", () => guarded(async () => {
+      const first = await TrafficAPI.dispatchEmergency({ id:$("emV1Id")?.value?.trim(), vehicleType:$("emV1Type")?.value, source:$("emV1Src")?.value, destination:$("emV1Dst")?.value });
+      const second = await TrafficAPI.dispatchEmergency({ id:$("emV2Id")?.value?.trim(), vehicleType:$("emV2Type")?.value, source:$("emV2Src")?.value, destination:$("emV2Dst")?.value });
+      if ($("emComparisonResultBadge")) $("emComparisonResultBadge").innerHTML = `<div class="alert alert-success">Dispatched ${escapeHtml(first.id)} and ${escapeHtml(second.id)}. Both routes are stored by the backend.</div>`;
+      await refreshAll();
+    }));
+    $("btnLoadConflictDemoPreset")?.addEventListener("click", () => {
+      if ($("emV1Src")) $("emV1Src").value = "J6";
+      if ($("emV2Src")) $("emV2Src").value = "J6";
+      if ($("emV1Dst") && state.junctions.length) $("emV1Dst").value = state.junctions.find(j => j.id !== "J6")?.id || "J1";
+      if ($("emV2Dst") && state.junctions.length) $("emV2Dst").value = state.junctions.find(j => j.id !== "J6" && j.id !== $("emV1Dst")?.value)?.id || "J2";
+    });
+    $("btnRoadModalToggleClosure")?.addEventListener("click", () => {
+      const next = $("btnRoadModalToggleClosure").dataset.closed !== "true";
+      $("btnRoadModalToggleClosure").dataset.closed = String(next);
+      if ($("roadModalStatus")) $("roadModalStatus").textContent = next ? "CLOSED (pending save)" : "OPEN (pending save)";
+    });
+    $("btnRoadModalApplyTraffic")?.addEventListener("click", () => guarded(saveRoadUpdate));
+    $("btnTriggerRoadClosure")?.addEventListener("click", () => {
+      const road = state.roads.find(r => r.source === "J1" && r.destination === "J2") || state.roads[0];
+      if (road) openRoadEditor(road.source, road.destination, !road.closed, road.trafficLevel);
+      showToast("Choose Apply Traffic Level to save the road update.");
+    });
+    $("btnTriggerHeavyTraffic")?.addEventListener("click", () => {
+      const road = state.roads.find(r => r.source === "J2" && r.destination === "J3") || state.roads.find(r => !r.closed);
+      if (road) openRoadEditor(road.source, road.destination, road.closed, "HEAVY");
+    });
+    $("simStatusBadge")?.addEventListener("click", () => showToast("Live database mode: use Generate Traffic and Emergency Routing to create persistent records."));
+    $("btnSimStart")?.addEventListener("click", () => showToast("Backend mode is request-driven; traffic changes are saved when you use the controls."));
+    $("btnSimPause")?.addEventListener("click", () => showToast("No background simulation timer is running."));
+    $("btnSimStep")?.addEventListener("click", () => guarded(refreshAll));
+    $("btnSimReset")?.addEventListener("click", () => showToast("Database records were not deleted. Refreshing live data."));
+    $("btnRunAutomatedTests")?.addEventListener("click", () => guarded(async () => {
+      const health = await TrafficAPI.health();
+      const roads = await TrafficAPI.roads();
+      const junctions = await TrafficAPI.junctions();
+      const result = $("testResultsContainer");
+      if (result) result.innerHTML = `<div class="alert alert-success">API smoke tests passed: backend health UP, ${junctions.length} junctions, ${roads.length} road records.</div>`;
+    }));
+    $("trafficModeSelect")?.addEventListener("change", () => {
+      if ($("randomCountRow")) $("randomCountRow").style.display = $("trafficModeSelect").value === "2" ? "" : "none";
+    });
+    $("eventsSearchInput")?.addEventListener("input", () => {
+      const q = $("eventsSearchInput").value.toLowerCase();
+      document.querySelectorAll("#eventsFullStreamContainer .event-item").forEach(el => { el.style.display = el.textContent.toLowerCase().includes(q) ? "" : "none"; });
+    });
+    $("dashAvgTravelTime") && ($("dashAvgTravelTime").textContent = "—");
+    $("dashAvgWaitTime") && ($("dashAvgWaitTime").textContent = "—");
+    guarded(async () => {
+      await TrafficAPI.health();
+      await refreshAll();
+      showToast("Connected to Spring Boot + MySQL.");
+    });
+    // Refresh read-only dashboard data every 10 seconds.
+    setInterval(() => guarded(refreshAll), 10000);
+  });
+})();

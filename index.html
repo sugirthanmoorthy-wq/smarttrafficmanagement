@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Coimbatore Smart Traffic Management and Emergency Vehicle Routing System - Intelligent traffic signals, automatic vehicle generation, Dijkstra routing, and green corridor priority.">
+  <title>Coimbatore Smart Traffic Management & Emergency Vehicle Routing</title>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css" rel="stylesheet">
+  <!-- Custom Design System -->
+  <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+
+  <header class="navbar-custom">
+    <div class="container-fluid d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <div class="d-flex align-items-center gap-3">
+       <button class="btn btn-outline-custom p-1 px-2"
+        id="sidebarToggleBtn"
+        aria-label="Toggle sidebar"
+        onclick="toggleSidebar()">
+          <i class="bi bi-list fs-5"></i>
+        </button>
+        <div class="brand-title">
+          <span class="fs-4">🚦</span>
+          <div>
+            <span class="d-block text-black">Smart Traffic Management System</span>
+            <small class="text-muted fw-normal d-block" style="font-size: 0.75rem;">Coimbatore live operations dashboard</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span id="backendStatusBadge" class="badge bg-primary cursor-pointer" title="Click to configure backend API connection">
+          <i class="bi bi-cpu me-1"></i> Backend: CONNECTING
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <div class="app-wrapper">
+    <aside class="app-sidebar">
+      <div class="nav-section-title">Operations</div>
+      <a class="nav-link-custom active" data-tab="dashboard">
+        <i class="bi bi-speedometer2"></i>
+        <span>Overview</span>
+      </a>
+      <a class="nav-link-custom" data-tab="network">
+        <i class="bi bi-map"></i>
+        <span>Live Map</span>
+      </a>
+      <a class="nav-link-custom" data-tab="traffic">
+        <i class="bi bi-car-front"></i>
+        <span>Vehicles</span>
+      </a>
+      <a class="nav-link-custom" data-tab="emergency">
+        <i class="bi bi-shield-exclamation"></i>
+        <span>Emergency Dispatch</span>
+      </a>
+      <a class="nav-link-custom" data-tab="events">
+        <i class="bi bi-calendar3-event"></i>
+        <span>Traffic Events</span>
+      </a>
+
+      <div class="mt-auto pt-3 border-top border-light-subtle">
+        <div class="px-2 py-1 text-muted" style="font-size: 0.75rem;">
+          <div><i class="bi bi-pin-map-fill me-1 text-primary"></i> 12 Junctions</div>
+          <div class="mt-1"><i class="bi bi-bezier2 me-1 text-primary"></i> Live road network</div>
+          <div class="mt-1"><i class="bi bi-check2-circle me-1 text-success"></i> Spring Boot + MySQL</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Body -->
+    <main class="app-content">
+      <div id="backendStatusBanner" class="backend-banner cursor-pointer" title="Click to configure backend connection">
+        <div>
+          <i class="bi bi-cpu text-primary me-2"></i>
+          <strong>Operational status:</strong> Live data from the Java Spring Boot backend is being monitored.
+        </div>
+        <button class="btn btn-sm btn-outline-primary">Connect backend</button>
+      </div>
+
+      <!-- ====================================================================
+           TAB 1: DASHBOARD
+           ==================================================================== -->
+      <section id="view-dashboard" class="tab-view">
+        <!-- Top KPI Row -->
+        <div class="row g-3 mb-4">
+          <div class="col-12 col-sm-6 col-xl-2">
+            <div class="metric-card">
+              <div class="metric-card-icon"><i class="bi bi-geo-alt-fill"></i></div>
+              <div class="metric-label">Junctions</div>
+              <div id="dashJunctionCount" class="metric-value">0</div>
+              <div class="metric-sub">Network nodes</div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-2">
+            <div class="metric-card success">
+              <div class="metric-card-icon"><i class="bi bi-car-front-fill"></i></div>
+              <div class="metric-label">Active vehicles</div>
+              <div id="dashTotalVehicles" class="metric-value">0</div>
+              <div class="metric-sub">Dispatched or in motion</div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-2">
+            <div class="metric-card warning">
+              <div class="metric-card-icon"><i class="bi bi-calendar2-check"></i></div>
+              <div class="metric-label">Scheduled normal</div>
+              <div id="dashScheduledVehicles" class="metric-value">0</div>
+              <div class="metric-sub">Status = SCHEDULED</div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-2">
+            <div class="metric-card emergency">
+              <div class="metric-card-icon"><i class="bi bi-hospital"></i></div>
+              <div class="metric-label">Active emergencies</div>
+              <div id="dashActiveEmergencies" class="metric-value">0</div>
+              <div class="metric-sub">Priority dispatches</div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-2">
+            <div class="metric-card">
+              <div class="metric-card-icon"><i class="bi bi-bell-fill"></i></div>
+              <div class="metric-label">Traffic events</div>
+              <div id="dashTrafficEvents" class="metric-value">0</div>
+              <div class="metric-sub">Recent event feed</div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-2">
+            <div class="metric-card">
+              <div class="metric-card-icon"><i class="bi bi-cpu"></i></div>
+              <div class="metric-label">Backend</div>
+              <div id="dashBackendStatus" class="metric-value">UP</div>
+              <div class="metric-sub">Spring Boot + MySQL</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Middle Row: Interactive Map Snapshot + Emergency Request Queue -->
+        <div class="row g-4 mb-4">
+          <div class="col-12 col-lg-7">
+            <div class="card-glass h-100" id="liveMapCard">
+              <div class="card-glass-header">
+                <h5 class="card-glass-title">
+                  <i class="bi bi-diagram-3-fill text-info"></i>
+                  Coimbatore Traffic Grid Live Network
+                </h5>
+                <button class="btn btn-sm btn-outline-custom" onclick="App.toggleMapExpanded()">
+                  Expand View <i class="bi bi-arrows-fullscreen ms-1"></i>
+                </button>
+              </div>
+              <div class="card-glass-body p-2">
+                <div id="dashMiniMapContainer" class="network-map-container"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-lg-5">
+            <div class="card-glass h-100">
+              <div class="card-glass-header">
+                <h5 class="card-glass-title">
+                  <i class="bi bi-shield-exclamation text-danger"></i>
+                  Active Emergency Request Queue (FIFO)
+                </h5>
+                <button class="btn btn-sm btn-outline-custom" onclick="App.switchTab('emergency')">
+                  Dispatch New <i class="bi bi-plus ms-1"></i>
+                </button>
+              </div>
+              <div class="card-glass-body p-0" id="dashEmergencyQueueBody">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Row: Active Vehicles & Live Event Stream -->
+        <div class="row g-4">
+          <div class="col-12 col-lg-7">
+            <div class="card-glass">
+              <div class="card-glass-header">
+                <h5 class="card-glass-title">
+                  <i class="bi bi-car-front text-primary"></i>
+                  Active En-Route Vehicles
+                </h5>
+                <button class="btn btn-sm btn-outline-custom" onclick="App.switchTab('traffic')">
+                  View All Tracking
+                </button>
+              </div>
+              <div class="card-glass-body p-0" id="dashActiveVehiclesBody">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-lg-5">
+            <div class="card-glass">
+              <div class="card-glass-header">
+                <h5 class="card-glass-title">
+                  <i class="bi bi-clock-history text-warning"></i>
+                  Recent Traffic & Signal Events
+                </h5>
+                <button class="btn btn-sm btn-outline-custom" onclick="App.switchTab('events')">
+                  Event Log
+                </button>
+              </div>
+              <div class="card-glass-body p-0" id="dashRecentEventsList" style="max-height: 380px; overflow-y: auto;">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           TAB 2: COIMBATORE TRAFFIC NETWORK
+           ==================================================================== -->
+      <section id="view-network" class="tab-view d-none">
+        <div class="card-glass mb-4">
+          <div class="card-glass-header flex-wrap gap-2">
+            <div>
+              <h4 class="card-glass-title text-white">
+                <i class="bi bi-diagram-3-fill text-info"></i>
+                Coimbatore Road Network Topology (12 Junctions, 17 Roads)
+              </h4>
+              <p class="text-muted small mb-0 mt-1">
+                Interactive schematic representation mapping Gandhipuram, Ukkadam, Singanallur, Peelamedu, RS Puram, Saibaba Colony, Town Hall, Race Course, Saravanampatti, Ganapathy, Hope College, and Ramanathapuram.
+              </p>
+            </div>
+            <!-- Legend Badges -->
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="badge" style="background: #2a6f97;">Light Traffic (1.0x)</span>
+              <span class="badge" style="background: #d4a373;">Moderate (1.5x)</span>
+              <span class="badge" style="background: #e76f51;">Heavy (2.5x)</span>
+              <span class="badge bg-danger">Closed Road</span>
+              <span class="badge bg-primary">Emergency Corridor</span>
+            </div>
+          </div>
+          <div class="card-glass-body">
+            <div class="network-container" id="networkSvgContainer">
+              <!-- SVG Road Network rendered by NetworkView.js -->
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-3 text-muted small flex-wrap gap-2">
+              <div>
+                <i class="bi bi-info-circle me-1"></i>
+                <strong>Tip:</strong> Click on any <strong>Road</strong> to toggle closure or change traffic level. Click any <strong>Junction</strong> to inspect signal state.
+              </div>
+              <button class="btn btn-sm btn-outline-custom" onclick="NetworkView.clearHighlight()">
+                <i class="bi bi-eraser me-1"></i> Clear Route Highlight
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           TAB 3: ROUTE MANAGEMENT (Dijkstra Router)
+           ==================================================================== -->
+      <section id="view-routes" class="tab-view d-none">
+        <div class="row g-4">
+          <!-- Route Form -->
+          <div class="col-12 col-lg-5">
+            <div class="card-glass">
+              <div class="card-glass-header">
+                <h5 class="card-glass-title">
+                  <i class="bi bi-signpost-split text-info"></i>
+                  Find Shortest Route (Dijkstra Min-Heap)
+                </h5>
+              </div>
+              <div class="card-glass-body">
+                <div id="routeErrorMessage" class="alert alert-danger d-none py-2 mb-3"></div>
+
+                <div class="mb-3">
+                  <label class="form-label form-label-custom">Vehicle Type</label>
+                  <select id="routeVehicleTypeSelect" class="form-select form-select-custom">
+                    <option value="NORMAL">Normal Vehicle (Car / Bus)</option>
+                    <option value="AMBULANCE">Ambulance (Emergency Priority)</option>
+                    <option value="FIRE_TRUCK">Fire Truck (Emergency Priority)</option>
+                    <option value="POLICE">Police Vehicle (Emergency Priority)</option>
+                  </select>
+                  <small class="text-muted" style="font-size: 0.75rem;">Emergency vehicles automatically request signal preemption corridors.</small>
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label form-label-custom">Source Junction</label>
+                  <select id="routeSourceSelect" class="form-select form-select-custom"></select>
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label form-label-custom">Destination Junction</label>
+                  <select id="routeDestSelect" class="form-select form-select-custom"></select>
+                </div>
+
+                <button id="btnFindRoute" class="btn btn-primary-custom w-100 py-2">
+                  <i class="bi bi-search me-1"></i> Calculate Optimal Route
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Route Calculation Results -->
+          <div class="col-12 col-lg-7">
+            <div id="routeResultCard" class="card-glass d-none">
+              <div class="card-glass-header">
+                <h5 class="card-glass-title text-success">
+                  <i class="bi bi-check2-circle"></i>
+                  Calculated Optimal Route
+                </h5>
+                <button id="btnDispatchRouteVehicle" class="btn btn-sm btn-success">
+                  <i class="bi bi-send-fill me-1"></i> Dispatch Vehicle Now
+                </button>
+              </div>
+              <div class="card-glass-body">
+                <div class="row g-3 mb-3">
+                  <div class="col-4">
+                    <div class="p-2 rounded bg-dark border border-secondary text-center">
+                      <small class="text-muted d-block">Vehicle Type</small>
+                      <strong id="resVehicleType" class="text-white">NORMAL</strong>
+                    </div>
+                  </div>
+                  <div class="col-4">
+                    <div class="p-2 rounded bg-dark border border-secondary text-center">
+                      <small class="text-muted d-block">Total Distance</small>
+                      <strong id="resDistance" class="text-info">0 km</strong>
+                    </div>
+                  </div>
+                  <div class="col-4">
+                    <div class="p-2 rounded bg-dark border border-secondary text-center">
+                      <small class="text-muted d-block">Est. Travel Time</small>
+                      <strong id="resEstTime" class="text-success">0 ticks</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Step-by-Step Corridor Display -->
+                <div class="mb-3">
+                  <label class="form-label form-label-custom">Corridor Sequence</label>
+                  <div id="resCorridorSteps" class="corridor-flow"></div>
+                </div>
+
+                <!-- Segments Breakdown -->
+                <div>
+                  <label class="form-label form-label-custom">Road Segments Breakdown</label>
+                  <div class="table-responsive">
+                    <table class="table-custom">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Segment</th>
+                          <th>Distance</th>
+                          <th>Base Speed</th>
+                          <th>Traffic Condition</th>
+                          <th>Cost</th>
+                        </tr>
+                      </thead>
+                      <tbody id="resRouteSegmentsTable"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-traffic" class="tab-view d-none">
+        <div class="card-glass mb-4">
+          <div class="card-glass-header">
+            <h5 class="card-glass-title">
+              <i class="bi bi-car-front text-primary"></i>
+              Normal Traffic Generation
+            </h5>
+          </div>
+          <div class="card-glass-body">
+            <div class="row g-3 align-items-end mb-3">
+              <div class="col-12 col-md-4">
+                <label class="form-label form-label-custom">Vehicle Count</label>
+                <input type="number" id="randomVehicleCountInput" class="form-control form-control-custom" min="3" max="10" value="6">
+              </div>
+
+              <div class="col-12 col-md-3">
+                <button id="btnGenerateTraffic" class="btn btn-primary-custom w-100">
+                  <i class="bi bi-shuffle me-1"></i> Generate Normal Traffic
+                </button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table-custom">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Type</th>
+                    <th>From &rarr; To</th>
+                    <th>Route</th>
+                    <th>Status</th>
+                    <th>Est. Time</th>
+                  </tr>
+                </thead>
+                <tbody id="liveTrafficTrackingBody">
+                  <tr><td colspan="6" class="text-center py-4 text-muted">No vehicle records yet. Generate a new batch to create live traffic.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-emergency" class="tab-view d-none">
+        <div class="row g-4 mb-4">
+          <div class="col-12">
+            <div class="card-glass h-100">
+              <div class="card-glass-header">
+                <h5 class="card-glass-title text-danger">
+                  <i class="bi bi-shield-shaded"></i>
+                  Emergency Dispatch
+                </h5>
+              </div>
+              <div class="card-glass-body">
+                <p class="text-muted small mb-3">
+                  The backend accepts each emergency request and dispatches it immediately with a green-corridor priority route. Requests are displayed in arrival order for operational visibility; no separate comparison workflow is required.
+                </p>
+                <div id="emSingleError" class="alert alert-danger d-none py-2 mb-3"></div>
+
+                <div class="row g-3 mb-3">
+                  <div class="col-12 col-md-3">
+                    <label class="form-label form-label-custom">Vehicle ID</label>
+                    <input type="text" id="emSingleId" class="form-control form-control-custom" value="AMB-001" placeholder="Optional">
+                  </div>
+                  <div class="col-12 col-md-3">
+                    <label class="form-label form-label-custom">Emergency Type</label>
+                    <select id="emSingleType" class="form-select form-select-custom">
+                      <option value="AMBULANCE">Ambulance</option>
+                      <option value="FIRE_TRUCK">Fire Truck</option>
+                      <option value="POLICE">Police Vehicle</option>
+                    </select>
+                  </div>
+                  <div class="col-12 col-md-3">
+                    <label class="form-label form-label-custom">Source Junction</label>
+                    <select id="emSingleSrc" class="form-select form-select-custom"></select>
+                  </div>
+                  <div class="col-12 col-md-3">
+                    <label class="form-label form-label-custom">Destination</label>
+                    <select id="emSingleDst" class="form-select form-select-custom"></select>
+                  </div>
+                </div>
+
+                <button id="btnDispatchSingleEmergency" class="btn btn-emergency-custom w-100 py-2">
+                  <i class="bi bi-broadcast me-1"></i> Dispatch Emergency Request
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-glass mb-4">
+          <div class="card-glass-header">
+            <h5 class="card-glass-title">
+              <i class="bi bi-list-ol text-danger"></i>
+              Emergency Request Queue
+            </h5>
+          </div>
+          <div class="card-glass-body p-0">
+            <div class="table-responsive">
+              <table class="table-custom">
+                <thead>
+                  <tr>
+                    <th>Queue Pos</th>
+                    <th>Vehicle ID</th>
+                    <th>Type</th>
+                    <th>Source</th>
+                    <th>Destination</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="emQueueTableBody">
+                  <tr><td colspan="6" class="text-center py-4 text-muted">No emergency requests have been dispatched yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           TAB 6: TRAFFIC SIGNAL MONITORING
+           ==================================================================== -->
+      <section id="view-signals" class="tab-view d-none">
+        <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+          <div>
+            <h4 class="text-white fw-bold mb-0">Traffic Signal Monitoring</h4>
+            <small class="text-muted">Real-time status for all 12 Coimbatore Junction Traffic Signals</small>
+          </div>
+          <div class="d-flex gap-2">
+            <span class="badge phase-normal">NORMAL</span>
+            <span class="badge phase-clearing">CLEARING</span>
+            <span class="badge phase-allred">ALL_RED</span>
+            <span class="badge phase-emergency">EMERGENCY_GREEN</span>
+            <span class="badge phase-restoring">RESTORING</span>
+          </div>
+        </div>
+
+        <div class="row" id="signalsGridContainer">
+          <!-- Dynamically populated with 12 junction cards -->
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           TAB 7: TRAFFIC EVENTS
+           ==================================================================== -->
+      <section id="view-events" class="tab-view d-none">
+        <div class="card-glass">
+          <div class="card-glass-header flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <h5 class="card-glass-title mb-0 me-3">
+                <i class="bi bi-clock-history text-info"></i>
+                Traffic Event Log Stream
+              </h5>
+              <div class="btn-group btn-group-sm" role="group">
+                <button class="btn btn-outline-custom event-filter-btn active" data-filter="all">All</button>
+                <button class="btn btn-outline-custom event-filter-btn" data-filter="emergency">Emergency</button>
+                <button class="btn btn-outline-custom event-filter-btn" data-filter="signal">Signals</button>
+                <button class="btn btn-outline-custom event-filter-btn" data-filter="traffic">Traffic</button>
+                <button class="btn btn-outline-custom event-filter-btn" data-filter="system">System</button>
+              </div>
+            </div>
+            
+            <div class="d-flex align-items-center gap-2">
+              <input type="text" id="eventsSearchInput" class="form-control form-control-sm form-control-custom" placeholder="Search events..." style="width: 180px;">
+              <button id="btnTriggerRoadClosure" class="btn btn-sm btn-outline-danger" title="Simulate an accident closing Gandhipuram <-> Ukkadam">
+                <i class="bi bi-exclamation-octagon me-1"></i> Close Road
+              </button>
+              <button id="btnTriggerHeavyTraffic" class="btn btn-sm btn-outline-warning" title="Simulate heavy congestion on Ukkadam <-> Singanallur">
+                <i class="bi bi-cone-striped me-1"></i> Heavy Traffic
+              </button>
+            </div>
+          </div>
+          <div class="card-glass-body p-0" id="eventsFullStreamContainer" style="max-height: 600px; overflow-y: auto;">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           TAB 8: REPORTS & AUTOMATED TESTS
+           ==================================================================== -->
+      <section id="view-reports" class="tab-view d-none">
+        <!-- Summary Cards -->
+        <div class="row g-3 mb-4">
+          <div class="col-12 col-md-3">
+            <div class="metric-card">
+              <div class="metric-label">Normal Signal Wait</div>
+              <div id="repAvgWaitNormal" class="metric-value">--</div>
+              <div class="metric-sub">Simulation ticks</div>
+            </div>
+          </div>
+          <div class="col-12 col-md-3">
+            <div class="metric-card emergency">
+              <div class="metric-label">Emergency Wait Time</div>
+              <div id="repAvgWaitEmergency" class="metric-value">0.00 ticks</div>
+              <div class="metric-sub">Zero-wait green corridor</div>
+            </div>
+          </div>
+          <div class="col-12 col-md-3">
+            <div class="metric-card success">
+              <div class="metric-label">Avg Simulated Travel</div>
+              <div id="repAvgTravel" class="metric-value">--</div>
+              <div class="metric-sub">Average trip duration</div>
+            </div>
+          </div>
+          <div class="col-12 col-md-3">
+            <div class="metric-card">
+              <div class="metric-label">Emergencies Completed</div>
+              <div id="repEmergencyCompleted" class="metric-value">0</div>
+              <div class="metric-sub">Corridor priority verified</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="row g-4 mb-4">
+          <div class="col-12 col-lg-6">
+            <div class="card-glass h-100">
+              <div class="card-glass-header">
+                <h5 class="card-glass-title">
+                  <i class="bi bi-bar-chart-fill text-primary"></i>
+                  Signal Waiting Time Comparison (Normal vs Priority)
+                </h5>
+              </div>
+              <div class="card-glass-body" style="height: 280px;">
+                <canvas id="chartWaitComparisonCanvas"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-lg-6">
+            <div class="card-glass h-100">
+              <div class="card-glass-header">
+                <h5 class="card-glass-title">
+                  <i class="bi bi-graph-up text-info"></i>
+                  Simulated Travel Times by Vehicle (Ticks)
+                </h5>
+              </div>
+              <div class="card-glass-body" style="height: 280px;">
+                <canvas id="chartTravelTimesCanvas"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Automated Test Runner matching Main.java -->
+        <div class="card-glass">
+          <div class="card-glass-header flex-wrap gap-2">
+            <div>
+              <h5 class="card-glass-title">
+                <i class="bi bi-check2-square text-success"></i>
+                Automated Test Suite Runner (Java Logic Parity)
+              </h5>
+              <small class="text-muted">Executes tests for Dijkstra, Road Closures, Signal Safety Invariant, and Multi-Emergency Conflict Resolution.</small>
+            </div>
+            <button id="btnRunAutomatedTests" class="btn btn-primary-custom">
+              <i class="bi bi-play-circle me-1"></i> Run Automated Tests
+            </button>
+          </div>
+          <div class="card-glass-body" id="testResultsContainer">
+            <div class="text-center py-4 text-muted">
+              Click <strong>"Run Automated Tests"</strong> to verify all 6 test suites against the live simulation algorithms.
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal: Road Segment Action -->
+  <div class="modal fade" id="roadActionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content card-glass" style="background: #0d1936; border: 1px solid var(--border-strong);">
+        <div class="modal-header border-bottom border-secondary border-opacity-25">
+          <h5 class="modal-title text-white" id="roadModalTitle">Road Segment Action</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="roadModalA">
+          <input type="hidden" id="roadModalB">
+
+          <div class="mb-3">
+            <label class="form-label form-label-custom">Current Road Status</label>
+            <div class="d-flex align-items-center justify-content-between p-2 rounded bg-dark border border-secondary">
+              <span class="text-white">Status: <strong id="roadModalStatus">OPEN</strong></span>
+              <button id="btnRoadModalToggleClosure" class="btn btn-sm btn-outline-danger">
+                Toggle Closure
+              </button>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label form-label-custom">Congestion Level</label>
+            <select id="roadModalTrafficSelect" class="form-select form-select-custom">
+              <option value="LIGHT">LIGHT (1.0x - Normal)</option>
+              <option value="MODERATE">MODERATE (1.5x Travel Time)</option>
+              <option value="HEAVY">HEAVY (2.5x Travel Time)</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer border-top border-secondary border-opacity-25">
+          <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Close</button>
+          <button type="button" id="btnRoadModalApplyTraffic" class="btn btn-primary-custom">Apply Traffic Level</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Backend API Configuration -->
+  <div class="modal fade" id="backendConfigModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content card-glass" style="background: #0d1936; border: 1px solid var(--border-strong);">
+        <div class="modal-header border-bottom border-secondary border-opacity-25">
+          <h5 class="modal-title text-white">
+            <i class="bi bi-hdd-network text-info me-2"></i>
+            Java Spring Boot REST API Connection
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small">
+            The frontend connects to a Java Spring Boot REST API or built-in Java HTTP Bridge. If no server is running, the in-browser simulation engine runs the exact same algorithms offline with zero data loss.
+          </p>
+
+          <div class="mb-3">
+            <label class="form-label form-label-custom">Backend REST URL</label>
+            <input type="text" id="backendUrlInput" class="form-control form-control-custom" value="http://localhost:8080">
+            <small class="text-muted">Default: <code>http://localhost:8080</code></small>
+          </div>
+
+          <div class="p-3 rounded bg-dark border border-secondary mb-2" style="font-size: 0.8rem;">
+            <strong class="text-info d-block mb-1">Available Endpoints:</strong>
+            <ul class="list-unstyled mb-0 text-muted">
+              <li><code>GET /api/network/junctions</code></li>
+              <li><code>GET /api/network/roads</code></li>
+              <li><code>POST /api/routes/find</code></li>
+              <li><code>POST /api/traffic/generate</code></li>
+              <li><code>POST /api/emergency/request</code></li>
+              <li><code>GET /api/signals</code></li>
+            </ul>
+          </div>
+        </div>
+        <div class="modal-footer border-top border-secondary border-opacity-25">
+          <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" id="btnSaveBackendUrl" class="btn btn-primary-custom">Connect & Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications Container -->
+  <div id="toastContainer" class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;"></div>
+
+  <!-- Scripts: Bootstrap 5, Chart.js, Modular Application Files -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/network.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/routes.js"></script>
+  <script src="js/traffic.js"></script>
+  <script src="js/emergency.js"></script>
+  <script src="js/signals.js"></script>
+  <script src="js/events.js"></script>
+  <script src="js/reports.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+function toggleSidebar() {
+    const sidebar = document.querySelector('.app-sidebar');
+
+    if (window.innerWidth < 992) {
+        sidebar.classList.toggle('show');
+    } else {
+        sidebar.classList.toggle('collapsed');
+    }
+}
+</script>
+</body>
+</html>
