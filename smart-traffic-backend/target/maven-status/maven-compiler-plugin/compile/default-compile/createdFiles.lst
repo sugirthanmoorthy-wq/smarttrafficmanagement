@@ -1,7 +1,0 @@
-com\vegam\traffic\TrafficController$EmergencyRequest.class
-com\vegam\traffic\TrafficController$RouteRequest.class
-com\vegam\traffic\TrafficController$RoadUpdate.class
-com\vegam\traffic\TrafficController.class
-com\vegam\traffic\TrafficController$Edge.class
-com\vegam\traffic\TrafficApplication.class
-com\vegam\traffic\TrafficController$NodeCost.class
