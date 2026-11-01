@@ -1,0 +1,21 @@
+# Java / Maven
+target/
+*.class
+
+# Maven installation
+smart-traffic-backend/apache-maven-*/
+
+# Logs
+*.log
+hs_err_pid*
+startup-error.txt
+
+# Backup files
+*.bak
+
+# IDE
+.idea/
+.vscode/
+
+# Environment secrets
+.env
